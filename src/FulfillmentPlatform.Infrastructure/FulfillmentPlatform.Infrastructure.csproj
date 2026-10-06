@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FulfillmentPlatform.Application\FulfillmentPlatform.Application.csproj" />
+    <ProjectReference Include="..\FulfillmentPlatform.Domain\FulfillmentPlatform.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

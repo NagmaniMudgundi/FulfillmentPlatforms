@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FulfillmentPlatform.Api/FulfillmentPlatform.Api.csproj" />
+    <Project Path="src/FulfillmentPlatform.Application/FulfillmentPlatform.Application.csproj" />
+    <Project Path="src/FulfillmentPlatform.Domain/FulfillmentPlatform.Domain.csproj" />
+    <Project Path="src/FulfillmentPlatform.Infrastructure/FulfillmentPlatform.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/FulfillmentPlatform.UnitTests/FulfillmentPlatform.UnitTests.csproj" />
+  </Folder>
+</Solution>
