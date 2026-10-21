@@ -1,4 +1,7 @@
-﻿using FulfillmentPlatform.Domain.Entities;
+﻿using FulfillmentPlatform.Application.Common;
+using FulfillmentPlatform.Domain.Entities;
+using FulfillmentPlatform.Infrastructure.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -6,16 +9,25 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+
 namespace FulfillmentPlatform.Infrastructure.Persistence
 {
-    public class AppDbContext: DbContext
+    public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
     {
-        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+        private readonly ICurrentUserService _currentUser;
+        // read fresh for EVERY query, from the current request's token
+        public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUserService currentUser) : base(options)
         {
+            _currentUser = currentUser;
         }
+        private int CurrentTenantId => _currentUser.TenantId;
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            // Global query filters: every query is automatically limited to the current tenant
+            modelBuilder.Entity<Product>().HasQueryFilter(p => p.TenantId == CurrentTenantId);
+            // TODO: the same for Order
+            modelBuilder.Entity<Order>().HasQueryFilter(p => p.TenantId == CurrentTenantId);
             // Configure relationships and constraints here if needed
             modelBuilder.Entity<Tenant>().Property(t => t.Name).HasMaxLength(200);
 
@@ -34,6 +46,19 @@ namespace FulfillmentPlatform.Infrastructure.Persistence
             .WithMany(p => p.OrderItems)            // ③ "each Product has MANY OrderItems"
             .HasForeignKey(oi => oi.ProductId)      // ④ "the link column is ProductId"
             .OnDelete(DeleteBehavior.Restrict);     // ⑤ "block deleting a Product that has OrderItems"
+             // User belongs to one Tenant. Tenant has no list of users (Domain can't know ApplicationUser)
+            modelBuilder.Entity<ApplicationUser>()
+                .HasOne(u => u.Tenant)           // the navigation you added in Part A
+                .WithMany()                      // empty: no list on the Tenant side
+                .HasForeignKey(u => u.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Order belongs to one user. Order has no navigation property (Domain can't know ApplicationUser)
+            modelBuilder.Entity<Order>()
+            .HasOne<ApplicationUser>()
+            .WithMany()
+            .HasForeignKey(o => o.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<OrderStatusHistory>().Property(p=> p.Note).HasMaxLength(500);
 

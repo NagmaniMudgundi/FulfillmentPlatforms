@@ -1,6 +1,4 @@
 ﻿using FulfillmentPlatform.Application.Tenants;
-using FulfillmentPlatform.Domain.Entities;
-using FulfillmentPlatform.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FulfillmentPlatform.Api.Controllers
@@ -10,36 +8,30 @@ namespace FulfillmentPlatform.Api.Controllers
     
     public class TenantsController : ControllerBase
     {
-        private readonly AppDbContext _db;
-        public TenantsController(AppDbContext db)
+        //private readonly AppDbContext _db;
+
+        private readonly ITenantService _tenantService;
+        public TenantsController(ITenantService tenantService)
         {
-            _db = db;
+            _tenantService = tenantService;
         }
-        [HttpPost]
-        public async Task<ActionResult<TenantResponse>> Create(CreateTenantRequest request)
-        {
-            var tenant = new Tenant { Name = request.Name };
-            _db.Tenants.Add(tenant);
-            await _db.SaveChangesAsync();
-            //SQL Server sends the new Id back, and EF Core writes it into your tenant object
-            //It copies three values from the entity into the DTO, in the same order as your record
+        //[HttpPost]
+        //public async Task<ActionResult<TenantResponse>> Create(CreateTenantRequest request)
+        //{
+        //    var result = await _tenantService.CreateAsync(request);
 
-            var response = new TenantResponse(tenant.Id, tenant.Name, tenant.CreatedAt);
-
-            return CreatedAtAction(nameof(GetById), new { id = tenant.Id }, response);
-
-        }
+        //    return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
+        //}
 
         [HttpGet("{id:int}")]
         public async Task<ActionResult<TenantResponse>> GetById(int id)
         {
-            var tenant = await _db.Tenants.FindAsync(id);
-            if (tenant == null)
+            var result = await _tenantService.GetByIdAsync(id);
+            if (result is null)
             {
-                return NotFound();
+              return NotFound();
             }
-            var response = new TenantResponse(tenant.Id, tenant.Name, tenant.CreatedAt);
-            return Ok(response);
+            return Ok(result);
         }
     }
 }

@@ -19,10 +19,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Controllers\" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\FulfillmentPlatform.Application\FulfillmentPlatform.Application.csproj" />
     <ProjectReference Include="..\FulfillmentPlatform.Infrastructure\FulfillmentPlatform.Infrastructure.csproj" />
   </ItemGroup>
