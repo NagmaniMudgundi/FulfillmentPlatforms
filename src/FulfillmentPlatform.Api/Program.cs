@@ -2,6 +2,7 @@ using FulfillmentPlatform.Api.ExceptionHandling;
 using FulfillmentPlatform.Api.Services;
 using FulfillmentPlatform.Application.Auth;
 using FulfillmentPlatform.Application.Common;
+using FulfillmentPlatform.Application.Orders;
 using FulfillmentPlatform.Application.Products;
 using FulfillmentPlatform.Application.Tenants;
 using FulfillmentPlatform.Infrastructure.Identity;
@@ -12,13 +13,15 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+//What it does: the JSON converter now translates "Shipped" ⇄ OrderStatus.Shipped, in both directions.
+builder.Services.AddControllers()
+.AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
-builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -97,6 +100,7 @@ builder.Services
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<IOrderService, OrderService>();
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())

@@ -33,6 +33,6 @@ public class CurrentUserService : ICurrentUserService
             return int.Parse(value);
         }
     }
+    public bool IsInRole(string role) => User?.IsInRole(role) ?? false;
 
-    
 }
