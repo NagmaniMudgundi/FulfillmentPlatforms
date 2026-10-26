@@ -1,0 +1,65 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Live Order Tracking (test)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 24px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 70px;
+        }
+
+        #log {
+            margin-top: 16px;
+            padding: 12px;
+            background: #f4f4f4;
+            min-height: 200px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h2>📡 Live Order Tracking (test page)</h2>
+    <p>Paste a JWT (from <code>/api/auth/login</code>) and click Connect:</p>
+    <textarea id="token"></textarea>
+    <br />
+    <button onclick="connect()">Connect</button>
+    <div id="log"></div>
+
+    <script>
+        function log(text) {
+            const time = new Date().toLocaleTimeString();
+            document.getElementById("log").textContent += `[${time}] ${text}\n`;
+        }
+
+        async function connect() {
+            const token = document.getElementById("token").value.trim();
+
+            // 1. describe the connection: which hub, and how to send the token
+            const connection = new signalR.HubConnectionBuilder()
+                .withUrl("/hubs/orders", { accessTokenFactory: () => token })
+                .withAutomaticReconnect()
+                .build();
+
+            // 2. what to do when the server sends "OrderStatusChanged"
+            connection.on("OrderStatusChanged", (e) => {
+                log(`🚚 Order #${e.orderId}: ${e.oldStatus} → ${e.newStatus}` + (e.note ? `  (${e.note})` : ""));
+            });
+
+            // 3. open the connection
+            try {
+                await connection.start();
+                log("✅ Connected. Waiting for live updates…");
+            } catch (err) {
+                log("❌ Could not connect: " + err);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -13,5 +13,6 @@ namespace FulfillmentPlatform.Application.Orders
         Task<OrderResponse> GetByIdAsync(int id);
         Task<OrderResponse> ChangeStatusAsync(int id, ChangeOrderStatusRequest request);
         Task<OrderResponse> CancelAsync(int id, CancelOrderRequest request);
+        Task CancelStaleOrdersAsync(int olderThanDays);
     }
 }

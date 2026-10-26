@@ -1,8 +1,10 @@
 ﻿using FulfillmentPlatform.Application.Common;
 using FulfillmentPlatform.Application.Common.Exceptions;
-using FulfillmentPlatform.Domain.Rules;
+using FulfillmentPlatform.Application.Common.Messaging;
+using FulfillmentPlatform.Application.Orders.Events;
 using FulfillmentPlatform.Domain.Entities;
 using FulfillmentPlatform.Domain.Enums;
+using FulfillmentPlatform.Domain.Rules;
 using Microsoft.EntityFrameworkCore;
 using System.Text;
 
@@ -12,11 +14,13 @@ public class OrderService : IOrderService
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly IEventPublisher _eventPublisher;
 
-    public OrderService(IAppDbContext db, ICurrentUserService currentUser)
+    public OrderService(IAppDbContext db, ICurrentUserService currentUser, IEventPublisher eventPublisher)
     {
         _db = db;
         _currentUser = currentUser;
+        _eventPublisher = eventPublisher;
     }
 
     public async Task<OrderResponse> PlaceOrderAsync(CreateOrderRequest request)
@@ -90,12 +94,28 @@ public class OrderService : IOrderService
         order.StatusHistory.Add(orderStatusHistory);
         // ⑦ save EVERYTHING at once (one SaveChanges = one transaction)
         _db.Orders.Add(order);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+            catch (DbUpdateConcurrencyException)
+        {
+            throw new ConflictException("The stock of a product changed while you were ordering. Please try again.");
+         }
 
         // ⑧ the receipt
         return ToResponse(order);
     }
-
+    private static OrderStatusChangedEvent CreateStatusChangedEvent(Order order, OrderStatus oldStatus, string? note) => new()
+    {
+        OrderId = order.Id,
+        TenantId = order.TenantId,
+        UserId = order.UserId,
+        OldStatus = oldStatus.ToString(),
+        NewStatus = order.Status.ToString(),
+        Note = note,
+        ChangedAt = DateTime.UtcNow
+    };
     private static OrderResponse ToResponse(Order order) => new OrderResponse
     {
         Id = order.Id,
@@ -121,6 +141,25 @@ public class OrderService : IOrderService
         }).ToList()
 
     };
+
+    // Shared by manual cancel and automatic cancel
+    private static void CancelOrder(Order order, string note)
+    {
+        // TODO 1: return the stock for each item (you wrote this loop in CancelAsync)
+        foreach (var item in order.OrderItems)
+        {
+            item.Product.StockQuantity += item.Quantity;
+        }
+        // TODO 2: set the status to Cancelled
+        order.Status = OrderStatus.Cancelled;
+        // TODO 3: add the history row with the note
+        OrderStatusHistory history = new OrderStatusHistory
+        {
+            Status = OrderStatus.Cancelled,
+            Note = note
+        };
+        order.StatusHistory.Add(history);
+    }
     // Orders the current caller may see, with everything needed for the response
     private IQueryable<Order> VisibleOrders()
     {
@@ -161,86 +200,98 @@ public class OrderService : IOrderService
     }
     public async Task<OrderResponse> ChangeStatusAsync(int id, ChangeOrderStatusRequest request)
     {
-        // cancelling has its own endpoint (it must return the stock)
         if (request.NewStatus == OrderStatus.Cancelled)
         {
             throw new BadRequestException("Use the cancel endpoint to cancel an order.");
         }
 
-        // TODO 1: load the order with VisibleOrders() + FirstOrDefaultAsync
-        //         not found → NotFoundException
         var order = await VisibleOrders().FirstOrDefaultAsync(o => o.Id == id);
         if (order is null)
         {
             throw new NotFoundException($"Order {id} not found.");
         }
 
-        // TODO 2: is the change allowed?
-        //         if (!OrderStatusTransitions.CanTransition(order.Status, request.NewStatus))
-        //         → ConflictException($"Cannot change status from {order.Status} to {request.NewStatus}.")
         if (!OrderStatusTransitions.CanTransition(order.Status, request.NewStatus))
         {
             throw new ConflictException($"Cannot change status from {order.Status} to {request.NewStatus}.");
         }
-        // TODO 3: set the new status on the order
-        order.Status = request.NewStatus;
-        // TODO 4: add a new OrderStatusHistory to order.StatusHistory
-        //         (Status = request.NewStatus, Note = request.Note)
-        OrderStatusHistory history = new OrderStatusHistory
+
+        var oldStatus = order.Status;                          // ① NEW: note down the old status ("Processing")
+
+        order.Status = request.NewStatus;                      // ② change it ("Shipped")
+        order.StatusHistory.Add(new OrderStatusHistory
         {
             Status = request.NewStatus,
             Note = request.Note
-        };
-        order.StatusHistory.Add(history);
-        await _db.SaveChangesAsync();
+        });
+
+        await _db.SaveChangesAsync();                          // ③ save to the database
+
+        await _eventPublisher.PublishAsync(                    // ④ NEW: tell RabbitMQ
+            CreateStatusChangedEvent(order, oldStatus, request.Note));
+
         return ToResponse(order);
     }
 
     public async Task<OrderResponse> CancelAsync(int id, CancelOrderRequest request)
     {
-        // ① load the order (customers only see their own; other tenants are filtered)
-        // TODO 1: VisibleOrders() + FirstOrDefaultAsync → null → NotFoundException
+        // load the order (customers only see their own; other tenants are filtered)
         var order = await VisibleOrders().FirstOrDefaultAsync(o => o.Id == id);
         if (order is null)
         {
             throw new NotFoundException($"Order {id} not found.");
         }
+
         var isCustomer = _currentUser.IsInRole(Roles.Customer);
 
-        // ② customers may only cancel while Pending
+        // customers may only cancel while Pending
         if (isCustomer && order.Status != OrderStatus.Pending)
         {
             throw new ConflictException("You can only cancel orders that are still pending. Please contact the shop.");
         }
 
-        // ③ is cancelling allowed from the current status?
-        // TODO 2: if (!OrderStatusTransitions.CanTransition(order.Status, OrderStatus.Cancelled))
-        //         → ConflictException($"An order with status {order.Status} cannot be cancelled.")
-        if(!OrderStatusTransitions.CanTransition(order.Status, OrderStatus.Cancelled))
+        // is cancelling allowed from the current status?
+        if (!OrderStatusTransitions.CanTransition(order.Status, OrderStatus.Cancelled))
         {
             throw new ConflictException($"An order with status {order.Status} cannot be cancelled.");
         }
-        // ④ return the stock
-        // TODO 3: foreach item in order.OrderItems → item.Product.StockQuantity += item.Quantity;
-        foreach(var item in order.OrderItems)
-        {
-            item.Product.StockQuantity += item.Quantity;
-        }
-        // ⑤ new status
-        // TODO 4: order.Status = OrderStatus.Cancelled;
-        order.Status = OrderStatus.Cancelled;
 
-        // ⑥ history row: use the reason if given, otherwise say who cancelled
         var note = request.Reason ?? (isCustomer ? "Cancelled by customer" : "Cancelled by shop");
-        // TODO 5: add a new OrderStatusHistory (Status = Cancelled, Note = note) to order.StatusHistory
-        OrderStatusHistory history = new OrderStatusHistory
-        {
-            Status = OrderStatus.Cancelled,
-            Note = note
-        };
-        order.StatusHistory.Add(history);
-        // ⑦ save stock + status + history together
-        await _db.SaveChangesAsync();
+
+        var oldStatus = order.Status;                              // ← NEW ① remember the old status
+
+        CancelOrder(order, note);                                  // ② stock back, Cancelled, history
+
+        await _db.SaveChangesAsync();                              // ③ save
+
+        await _eventPublisher.PublishAsync(                        // ← NEW ④ tell RabbitMQ
+            CreateStatusChangedEvent(order, oldStatus, note));
+
         return ToResponse(order);
+    }
+    public async Task CancelStaleOrdersAsync(int olderThanDays)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-olderThanDays);      // e.g. "3 days ago"
+        var note = $"Automatically cancelled: not processed within {olderThanDays} days.";
+
+        var staleOrders = await _db.Orders
+            .IgnoreQueryFilters()                                  // a job has no tenant: look at ALL tenants
+            .Include(o => o.OrderItems).ThenInclude(i => i.Product)
+            .Include(o => o.StatusHistory)
+            .Where(o => o.Status == OrderStatus.Pending && o.CreatedAt < cutoff)
+            .ToListAsync();
+
+        foreach (var order in staleOrders)
+        {
+            CancelOrder(order, note);                              // ② stock back, Cancelled, history
+        }
+
+        await _db.SaveChangesAsync();                              // ③ save all at once
+
+        foreach (var order in staleOrders)                         // ← NEW ④ tell RabbitMQ, one message per order
+        {
+            await _eventPublisher.PublishAsync(
+                CreateStatusChangedEvent(order, OrderStatus.Pending, note));
+        }
     }
 }

@@ -1,22 +1,35 @@
 using FulfillmentPlatform.Api.ExceptionHandling;
+using FulfillmentPlatform.Api.Hubs;
 using FulfillmentPlatform.Api.Services;
 using FulfillmentPlatform.Application.Auth;
 using FulfillmentPlatform.Application.Common;
+using FulfillmentPlatform.Application.Common.Email;
+using FulfillmentPlatform.Application.Common.Messaging;
+using FulfillmentPlatform.Application.Common.Realtime;
 using FulfillmentPlatform.Application.Orders;
 using FulfillmentPlatform.Application.Products;
 using FulfillmentPlatform.Application.Tenants;
+using FulfillmentPlatform.Infrastructure.Email;
 using FulfillmentPlatform.Infrastructure.Identity;
+using FulfillmentPlatform.Infrastructure.Messaging;
 using FulfillmentPlatform.Infrastructure.Persistence;
+using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Serilog;
 using System.Text;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)     // levels come from appsettings.json
+    .Enrich.FromLogContext()                           // adds extra context (e.g. request id) to each log
+    .WriteTo.Console()                                 // sink 1: the console window
+    .WriteTo.File("logs/log-.txt",                     // sink 2: a file
+        rollingInterval: RollingInterval.Day));        //   → a NEW file every day: log-20261026.txt
 // Add services to the container.
 //What it does: the JSON converter now translates "Shipped" ⇄ OrderStatus.Shipped, in both directions.
 builder.Services.AddControllers()
@@ -95,14 +108,49 @@ builder.Services
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
+        // SignalR: WebSockets can't send headers, so the token comes in the URL (?access_token=...)
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+
+                // only for the hub, never for normal API endpoints
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+//use Hangfire, and store jobs in this database” (the same connection string as EF Core)
+builder.Services.AddHangfire(config =>
+    config.UseSqlServerStorage(builder.Configuration.GetConnectionString("DefaultConnection")));
+//starts the worker inside your API that picks up and runs jobs
+builder.Services.AddHangfireServer();
+builder.Services.AddSingleton<IEventPublisher, RabbitMqEventPublisher>();
+builder.Services.AddHostedService<OrderStatusChangedConsumer>();
+builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+builder.Services.AddSingleton<IRealtimeNotifier, SignalRRealtimeNotifier>();
+builder.Services.AddSignalR();
 var app = builder.Build();
 
+app.UseHangfireDashboard("/hangfire");
+var autoCancelDays = builder.Configuration.GetValue<int>("Orders:AutoCancelAfterDays");
+
+var recurringJobs = app.Services.GetRequiredService<IRecurringJobManager>();
+recurringJobs.AddOrUpdate<IOrderService>(
+    "cancel-stale-orders",                                   // unique name of the job
+    service => service.CancelStaleOrdersAsync(autoCancelDays),
+    Cron.Hourly);                                            // every hour
 using (var scope = app.Services.CreateScope())
 {
     await RoleSeeder.SeedAsync(scope.ServiceProvider);
@@ -117,9 +165,12 @@ if (app.Environment.IsDevelopment())
 
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<OrderHub>("/hubs/orders");
 
 app.Run();
+public partial class Program { }

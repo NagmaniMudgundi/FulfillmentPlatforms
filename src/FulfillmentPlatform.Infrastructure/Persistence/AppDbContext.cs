@@ -34,13 +34,14 @@ namespace FulfillmentPlatform.Infrastructure.Persistence
             modelBuilder.Entity<Product>().Property(p => p.Price).HasColumnType("decimal(18,2)");
             modelBuilder.Entity<Product>().Property(p=>p.Name).HasMaxLength(200);
             modelBuilder.Entity<Product>().Property(p=>p.Sku).HasMaxLength(100);
-
+            modelBuilder.Entity<Product>().Property(p => p.RowVersion).IsRowVersion();
             modelBuilder.Entity<Order>().Property(o=>o.UserId).HasMaxLength(450);
 
             modelBuilder.Entity<Order>().Property(o => o.TotalAmount).HasColumnType("decimal(18,2)");
 
             modelBuilder.Entity<OrderItem>().Property(oi => oi.UnitPrice).HasColumnType("decimal(18,2)");
-
+            modelBuilder.Entity<OrderItem>().HasQueryFilter(i => i.Order.TenantId == CurrentTenantId);
+            modelBuilder.Entity<OrderStatusHistory>().HasQueryFilter(h => h.Order.TenantId == CurrentTenantId);
             modelBuilder.Entity<OrderItem>()         // ① "I'm configuring the OrderItem table"
             .HasOne(oi => oi.Product)               // ② "each OrderItem has ONE Product"
             .WithMany(p => p.OrderItems)            // ③ "each Product has MANY OrderItems"

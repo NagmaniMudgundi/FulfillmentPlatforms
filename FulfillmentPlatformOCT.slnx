@@ -6,6 +6,7 @@
     <Project Path="src/FulfillmentPlatform.Infrastructure/FulfillmentPlatform.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/test/">
+    <Project Path="test/FulfillmentPlatform.IntegrationTests/FulfillmentPlatform.IntegrationTests.csproj" Id="e95dd329-de84-4bd1-996b-4706347b7109" />
     <Project Path="test/FulfillmentPlatform.UnitTests/FulfillmentPlatform.UnitTests.csproj" />
   </Folder>
 </Solution>
