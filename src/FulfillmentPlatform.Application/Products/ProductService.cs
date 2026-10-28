@@ -21,8 +21,8 @@ namespace FulfillmentPlatform.Application.Products
         }
         public async Task<ProductResponse> CreateAsync(CreateProductRequest request)
         {
-            var tenantId = _currentUser.TenantId;
-          
+            var tenantId = _currentUser.RequireTenantId();
+
             // Check 2: is the SKU already used by this tenant?
             var SkuExists = await _db.Products.AnyAsync(s => s.Sku == request.Sku );
             {

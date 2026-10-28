@@ -31,5 +31,10 @@ namespace FulfillmentPlatform.Application.Auth
 
         [RegularExpression("^#[0-9A-Fa-f]{6}$", ErrorMessage = "Use a hex colour like #0F766E.")]
         public string? BrandColor { get; set; }
+        [Required, StringLength(100)]
+        public string AdminFirstName { get; set; } = default!;
+
+        [Required, StringLength(100)]
+        public string AdminLastName { get; set; } = default!;
     }
 }

@@ -20,7 +20,7 @@ namespace FulfillmentPlatform.Infrastructure.Persistence
         {
             _currentUser = currentUser;
         }
-        private int CurrentTenantId => _currentUser.TenantId;
+        private int? CurrentTenantId => _currentUser.TenantId;
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -42,6 +42,9 @@ namespace FulfillmentPlatform.Infrastructure.Persistence
             modelBuilder.Entity<Product>().Property(p=>p.Sku).HasMaxLength(100);
             modelBuilder.Entity<Product>().Property(p => p.RowVersion).IsRowVersion();
             modelBuilder.Entity<Order>().Property(o=>o.UserId).HasMaxLength(450);
+
+            modelBuilder.Entity<ApplicationUser>().Property(u => u.FirstName).HasMaxLength(100);
+            modelBuilder.Entity<ApplicationUser>().Property(u => u.LastName).HasMaxLength(100);
 
             modelBuilder.Entity<Order>().Property(o => o.TotalAmount).HasColumnType("decimal(18,2)");
 

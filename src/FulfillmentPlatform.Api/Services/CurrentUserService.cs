@@ -21,18 +21,17 @@ public class CurrentUserService : ICurrentUserService
         User?.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? throw new UnauthorizedException("User is not authenticated.");
 
-    public int TenantId
+    public int? TenantId
     {
         get
         {
             var value = User?.FindFirstValue("tenantId");
-            if (value is null)
-            {
-                throw new UnauthorizedException("No tenant found in token.");
-            }
-            return int.Parse(value);
+            return int.TryParse(value, out var id) ? id : null;   // no badge → null, no crash
         }
     }
+
+    public int RequireTenantId() =>
+        TenantId ?? throw new UnauthorizedException("This action requires a shop account.");
     public bool IsInRole(string role) => User?.IsInRole(role) ?? false;
 
 }

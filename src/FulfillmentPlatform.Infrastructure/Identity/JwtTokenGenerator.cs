@@ -22,8 +22,15 @@ public class JwtTokenGenerator
         {
             new(JwtRegisteredClaimNames.Sub, user.Id),
             new(JwtRegisteredClaimNames.Email, user.Email!),
-            new("tenantId", user.TenantId.ToString())
+            new("name", user.FirstName)
         };
+
+        // only shop staff get a tenant badge
+        if (user.TenantId.HasValue)
+        {
+            claims.Add(new Claim("tenantId", user.TenantId.Value.ToString()));
+        }
+
         foreach (var role in roles)
         {
             claims.Add(new Claim(ClaimTypes.Role, role));

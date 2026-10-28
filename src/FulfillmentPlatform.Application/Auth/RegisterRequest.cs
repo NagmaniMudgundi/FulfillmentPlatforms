@@ -13,7 +13,11 @@ namespace FulfillmentPlatform.Application.Auth
         public string Email { get; init; } = string.Empty;
         [Required]
         public string Password { get; init; } = string.Empty;
-        [Range(1, int.MaxValue)]
-        public int TenantId { get; init; } 
+      
+        [Required, StringLength(100)]
+        public string FirstName { get; set; } = default!;
+
+        [Required, StringLength(100)]
+        public string LastName { get; set; } = default!;
     }
 }

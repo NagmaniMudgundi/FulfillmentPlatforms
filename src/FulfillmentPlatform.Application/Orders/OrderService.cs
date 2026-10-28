@@ -26,7 +26,7 @@ public class OrderService : IOrderService
     public async Task<OrderResponse> PlaceOrderAsync(CreateOrderRequest request)
     {
         // ① who is ordering?
-        var tenantId = _currentUser.TenantId;
+        var tenantId = _currentUser.RequireTenantId();
         var userId = _currentUser.UserId;
 
         // ② no duplicate products in one order

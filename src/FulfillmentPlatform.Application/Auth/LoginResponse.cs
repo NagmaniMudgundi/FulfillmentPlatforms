@@ -10,5 +10,9 @@ namespace FulfillmentPlatform.Application.Auth
     {
         public string Token { get; init; } = string.Empty;
         public DateTime ExpiresAt { get; init; }
+        public string Email { get; set; } = default!;
+        public string FirstName { get; set; } = default!;
+        public List<string> Roles { get; set; } = new();
+        public int? TenantId { get; set; }
     }
 }

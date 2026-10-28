@@ -29,19 +29,14 @@ namespace FulfillmentPlatform.Infrastructure.Identity
 
         public async Task<RegisterResponse> RegisterAsync(RegisterRequest request)
         {
-            // ── TODO 1: does the tenant exist? ─────────────────────────────
-            var tenantExists = await _db.Tenants.AnyAsync(t => t.Id == request.TenantId);
-            if (!tenantExists)
-            {
-                throw new NotFoundException($"Tenant {request.TenantId} not found.");
-            }
-
+           
             // ── create the user object (not saved yet) ─────────────────────
             var user = new ApplicationUser
             {
                 UserName = request.Email,
                 Email = request.Email,
-                TenantId = request.TenantId
+                FirstName = request.FirstName,
+                LastName = request.LastName,
             };
 
             // ── save the user: checks password rules, hashes, inserts ──────
@@ -92,7 +87,11 @@ namespace FulfillmentPlatform.Infrastructure.Identity
             return new LoginResponse
             {
                 Token = token,
-                ExpiresAt = expiresAt
+                ExpiresAt = expiresAt,
+                Email = user.Email!,
+                FirstName = user.FirstName,
+                Roles = roles.ToList(),
+                TenantId = user.TenantId
             };
         }
 
@@ -127,6 +126,8 @@ namespace FulfillmentPlatform.Infrastructure.Identity
             {
                 UserName = request.AdminEmail,
                 Email = request.AdminEmail,
+                FirstName = request.AdminFirstName,
+                LastName = request.AdminLastName,
                 TenantId = tenant.Id
             };
             var result = await _userManager.CreateAsync(user, request.AdminPassword);

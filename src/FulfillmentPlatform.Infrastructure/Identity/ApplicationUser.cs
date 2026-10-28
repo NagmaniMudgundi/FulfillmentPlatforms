@@ -10,7 +10,9 @@ namespace FulfillmentPlatform.Infrastructure.Identity
 {
     public class ApplicationUser: IdentityUser
     {
-        public int TenantId { get; set; }
-        public Tenant Tenant { get; set; } = null!;
+        public int? TenantId { get; set; }          // null = customer (platform), value = admin of that shop
+        public Tenant? Tenant { get; set; }
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
     }
 }
