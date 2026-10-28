@@ -1,6 +1,7 @@
 ﻿using FulfillmentPlatform.Application.Auth;
 using FulfillmentPlatform.Application.Common;
 using FulfillmentPlatform.Application.Common.Exceptions;
+using FulfillmentPlatform.Application.Tenants;
 using FulfillmentPlatform.Domain.Entities;
 using FulfillmentPlatform.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -100,12 +101,28 @@ namespace FulfillmentPlatform.Infrastructure.Identity
             // start the transaction: nothing below is permanent until CommitAsync
             await using var transaction = await _db.Database.BeginTransactionAsync();
 
-            // ① create the tenant
-            var tenant = new Tenant { Name = request.CompanyName };
+            // ① normalise the slug: " ModeHaus " → "modehaus"
+            var slug = ShopSlug.Normalize(request.Slug);
+
+            // ② friendly check: is this shop link already taken? (the unique index is the safety net)
+            if (await _db.Tenants.AnyAsync(t => t.Slug == slug))
+            {
+                throw new ConflictException($"The shop link '{slug}' is already taken.");
+            }
+
+            // ③ create the tenant with all its values
+            var tenant = new Tenant
+            {
+                Name = request.CompanyName,
+                Slug = slug,
+                Description = request.Description,
+                City = request.City,
+                BrandColor = request.BrandColor
+            };
             _db.Tenants.Add(tenant);
             await _db.SaveChangesAsync();          // tenant.Id is filled now (but not yet permanent)
 
-            // ② create the admin user for this tenant
+            // ④ create the admin user for this tenant
             var user = new ApplicationUser
             {
                 UserName = request.AdminEmail,
@@ -113,25 +130,22 @@ namespace FulfillmentPlatform.Infrastructure.Identity
                 TenantId = tenant.Id
             };
             var result = await _userManager.CreateAsync(user, request.AdminPassword);
-
-            // TODO 1: if !result.Succeeded → throw BadRequestException with all errors
-            //         (copy from RegisterAsync)
-            if(!result.Succeeded)
+            if (!result.Succeeded)
             {
                 var errors = string.Join(", ", result.Errors.Select(e => e.Description));
                 throw new BadRequestException(errors);
             }
 
-            // ③ TODO 2: give the user the TenantAdmin role (constant from Roles)
+            // ⑤ give the user the TenantAdmin role
             await _userManager.AddToRoleAsync(user, Roles.TenantAdmin);
 
             // everything worked → make it permanent
             await transaction.CommitAsync();
 
-            // TODO 3: return a RegisterCompanyResponse (TenantId, UserId, Email)
             return new RegisterCompanyResponse
             {
                 TenantId = tenant.Id,
+                Slug = tenant.Slug,
                 UserId = user.Id,
                 Email = request.AdminEmail
             };

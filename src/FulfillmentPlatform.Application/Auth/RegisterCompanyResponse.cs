@@ -12,5 +12,6 @@ namespace FulfillmentPlatform.Application.Auth
         public int TenantId { get; init; }
         public string UserId { get; init; } = string.Empty;
         public string Email { get; init; } = string.Empty;
+        public string Slug { get; set; } = default!;   // ⬅️ NEW
     }
 }

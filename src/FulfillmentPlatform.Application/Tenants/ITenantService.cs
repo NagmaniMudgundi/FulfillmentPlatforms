@@ -10,6 +10,8 @@ namespace FulfillmentPlatform.Application.Tenants
     {
         Task<TenantResponse> CreateAsync(CreateTenantRequest request);
         Task<TenantResponse?> GetByIdAsync(int id);
+        Task<List<ShopResponse>> GetShopsAsync();
+        Task<ShopResponse> GetShopBySlugAsync(string slug);
 
 
     }

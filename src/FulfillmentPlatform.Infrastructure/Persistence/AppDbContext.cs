@@ -31,6 +31,12 @@ namespace FulfillmentPlatform.Infrastructure.Persistence
             // Configure relationships and constraints here if needed
             modelBuilder.Entity<Tenant>().Property(t => t.Name).HasMaxLength(200);
 
+            modelBuilder.Entity<Tenant>().Property(t => t.Slug).IsRequired().HasMaxLength(50);
+            modelBuilder.Entity<Tenant>().Property(t => t.Description).HasMaxLength(100);
+            modelBuilder.Entity<Tenant>().Property(t => t.City).HasMaxLength(100);
+            modelBuilder.Entity<Tenant>().Property(t => t.BrandColor).HasMaxLength(7);
+            modelBuilder.Entity<Tenant>().HasIndex(t => t.Slug).IsUnique();
+
             modelBuilder.Entity<Product>().Property(p => p.Price).HasColumnType("decimal(18,2)");
             modelBuilder.Entity<Product>().Property(p=>p.Name).HasMaxLength(200);
             modelBuilder.Entity<Product>().Property(p=>p.Sku).HasMaxLength(100);
@@ -71,6 +77,7 @@ namespace FulfillmentPlatform.Infrastructure.Persistence
             modelBuilder.Entity<Product>().HasIndex(p => new { p.TenantId, p.Sku }).IsUnique();
 
             modelBuilder.Entity<Order>().HasIndex(o => new { o.TenantId, o.Status });
+
         }
         public DbSet<Tenant> Tenants { get; set; } = null!;
         public DbSet<Product> Products { get; set; } = null!;

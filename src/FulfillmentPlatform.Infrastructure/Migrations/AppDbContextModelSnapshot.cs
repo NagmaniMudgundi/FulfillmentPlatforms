@@ -162,15 +162,35 @@ namespace FulfillmentPlatform.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("BrandColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
 
                     b.ToTable("Tenants");
                 });
