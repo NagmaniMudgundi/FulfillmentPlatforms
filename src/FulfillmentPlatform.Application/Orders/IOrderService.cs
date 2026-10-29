@@ -8,7 +8,7 @@ namespace FulfillmentPlatform.Application.Orders
 {
     public interface IOrderService
     {
-        Task<OrderResponse> PlaceOrderAsync(CreateOrderRequest request);
+        Task<CheckoutResponse> CheckoutAsync(CheckoutRequest request);
         Task<List<OrderResponse>> GetAllAsync();
         Task<OrderResponse> GetByIdAsync(int id);
         Task<OrderResponse> ChangeStatusAsync(int id, ChangeOrderStatusRequest request);

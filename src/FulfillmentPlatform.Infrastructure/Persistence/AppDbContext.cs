@@ -50,6 +50,12 @@ namespace FulfillmentPlatform.Infrastructure.Persistence
             modelBuilder.Entity<Category>().Property(c => c.Slug).IsRequired().HasMaxLength(50);
             modelBuilder.Entity<Category>().HasIndex(c => c.Slug).IsUnique();
 
+            // CHECKOUT: orders of one checkout + delivery address snapshot
+            modelBuilder.Entity<Order>().HasIndex(o => o.CheckoutId);
+            modelBuilder.Entity<Order>().Property(o => o.ShippingStreet).HasMaxLength(200);
+            modelBuilder.Entity<Order>().Property(o => o.ShippingPostalCode).HasMaxLength(10);
+            modelBuilder.Entity<Order>().Property(o => o.ShippingCity).HasMaxLength(100);
+
             // the fixed categories, created automatically with the database
             modelBuilder.Entity<Category>().HasData(
                 new Category { Id = 1, Name = "Fashion", Slug = "fashion" },

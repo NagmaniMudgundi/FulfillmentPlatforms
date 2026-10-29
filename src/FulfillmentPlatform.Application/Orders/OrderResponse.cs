@@ -14,5 +14,8 @@ namespace FulfillmentPlatform.Application.Orders
         public DateTime CreatedAt { get; set; }
         public List<OrderItemResponse> Items { get; set; } = new();
         public List<OrderStatusHistoryResponse> StatusHistory { get; set; } = new();
+        public Guid CheckoutId { get; init; }
+        public string ShopName { get; init; } = string.Empty;
+        public string ShopSlug { get; init; } = string.Empty;
     }
 }

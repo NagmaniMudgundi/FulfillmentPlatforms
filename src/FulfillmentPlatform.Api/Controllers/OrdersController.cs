@@ -16,13 +16,16 @@ namespace FulfillmentPlatform.Api.Controllers
         {
             _orderService = orderService;
         }
-        [Authorize(Roles = Roles.Customer)]
-        [HttpPost]
-        public async Task<ActionResult<OrderResponse>> PlaceOrder(CreateOrderRequest request)
+        [HttpPost("checkout")]                                   // POST /api/orders/checkout
+        [Authorize(Roles = Roles.Customer)]                      // only customers buy; admins manage
+        public async Task<ActionResult<CheckoutResponse>> Checkout(CheckoutRequest request)
         {
-            var orderResponse = await _orderService.PlaceOrderAsync(request);
-            return CreatedAtAction(nameof(GetOrderById), new { id = orderResponse.Id }, orderResponse);
+            var checkoutResponse = await _orderService.CheckoutAsync(request);
+            return Ok(checkoutResponse);    
+        
         }
+   
+
         [HttpGet("{id:int}")]
         public async Task<ActionResult<OrderResponse>> GetOrderById(int id)
         {

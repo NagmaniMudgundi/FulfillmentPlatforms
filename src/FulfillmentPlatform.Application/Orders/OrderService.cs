@@ -23,88 +23,116 @@ public class OrderService : IOrderService
         _eventPublisher = eventPublisher;
     }
 
-    public async Task<OrderResponse> PlaceOrderAsync(CreateOrderRequest request)
+    public async Task<CheckoutResponse> CheckoutAsync(CheckoutRequest request)
     {
         // ① who is ordering?
-        var tenantId = _currentUser.RequireTenantId();
         var userId = _currentUser.UserId;
 
-        // ② no duplicate products in one order
+        // ② no duplicate products in one cart
         var productIds = request.Items.Select(i => i.ProductId).ToList();
         if (productIds.Distinct().Count() != productIds.Count)
         {
-            throw new BadRequestException("Each product may appear only once per order.");
+            throw new BadRequestException("Each product may appear only once in the cart.");
         }
 
-        // ③ load all products in ONE query (tenant filter is applied automatically)
-        // TODO 1: var products = await _db.Products. ... .ToListAsync();
+        // ③ load all products in ONE query, with their shop (customers see all shops)
         var products = await _db.Products
-            .Where(p => productIds.Contains(p.Id))
-            .ToListAsync();
-        // ④ were all products found?
-        // TODO 2: if products.Count != productIds.Count → throw NotFoundException("One or more products were not found.")
+            .Include(p => p.Tenant)
+            .Where(p => productIds.Contains(p.Id) && p.IsActive)
+            .ToDictionaryAsync(p => p.Id);
+
         if (products.Count != productIds.Count)
         {
-            throw new NotFoundException("One or more products were not found.");
+            throw new NotFoundException("One or more products were not found or are no longer available.");
         }
 
-        // ⑤ build the order
-        var order = new Order
-        {
-            TenantId = tenantId,
-            UserId = userId,
-            Status = OrderStatus.Pending
-        };
-        decimal total = 0;
+        // ④ one checkout id for all orders of this cart
+        var checkoutId = Guid.NewGuid();
+        var orders = new List<Order>();
 
-        foreach (var item in request.Items)
-        {
-            var product = products.First(p => p.Id == item.ProductId);
+        // ⑤ SPLIT: group the cart items by shop → one order per shop
+        var itemsByShop = request.Items.GroupBy(i => products[i.ProductId].TenantId);
 
-            // TODO 3: if product.StockQuantity < item.Quantity
-            //         → throw ConflictException($"Not enough stock for '{product.Name}'. Available: …, requested: ….")
-            if (product.StockQuantity < item.Quantity)
+        foreach (var shopItems in itemsByShop)
+        {
+            var order = new Order
             {
-                throw new ConflictException($"Not enough stock for '{product.Name}'. Available: {product.StockQuantity}, requested: {item.Quantity}.");
-            }
-            // TODO 4: reduce the stock
-            product.StockQuantity -= item.Quantity;
-            // TODO 5: add a new OrderItem to order.OrderItems:
-            //         ProductId, Product (the navigation!), Quantity, UnitPrice = product.Price  ← the snapshot
-            var orderItem = new OrderItem
-            {
-                ProductId = product.Id,
-                Product = product,
-                Quantity = item.Quantity,
-                UnitPrice = product.Price
+                TenantId = shopItems.Key,                       // the shop comes from the PRODUCT
+                Tenant = products[shopItems.First().ProductId].Tenant,
+                UserId = userId,
+                CheckoutId = checkoutId,
+                Status = OrderStatus.Pending,
+                ShippingStreet = request.Street.Trim(),
+                ShippingPostalCode = request.PostalCode,
+                ShippingCity = request.City.Trim()
             };
-            order.OrderItems.Add(orderItem);
-            // TODO 6: total += item.Quantity * product.Price;
-            total += item.Quantity * product.Price;
+
+            decimal total = 0;
+            foreach (var item in shopItems)
+            {
+                var product = products[item.ProductId];
+
+                if (product.StockQuantity < item.Quantity)
+                {
+                    throw new ConflictException(
+                        $"Not enough stock for '{product.Name}'. Available: {product.StockQuantity}, requested: {item.Quantity}.");
+                }
+
+                product.StockQuantity -= item.Quantity;          // reduce stock (RowVersion protects it)
+
+                order.OrderItems.Add(new OrderItem
+                {
+                    ProductId = product.Id,
+                    Product = product,
+                    Quantity = item.Quantity,
+                    UnitPrice = product.Price                     // price snapshot
+                });
+                total += item.Quantity * product.Price;
+            }
+
+            order.TotalAmount = total;
+            order.StatusHistory.Add(new OrderStatusHistory
+            {
+                Status = OrderStatus.Pending,
+                Note = "Order placed"
+            });
+
+            orders.Add(order);
+            _db.Orders.Add(order);
         }
 
-        // ⑥ total + first history row
-        order.TotalAmount = total;
-        // TODO 7: add a new OrderStatusHistory to order.StatusHistory with Status = OrderStatus.Pending
-        var orderStatusHistory = new OrderStatusHistory
-        {
-
-            Status = OrderStatus.Pending
-        };
-        order.StatusHistory.Add(orderStatusHistory);
-        // ⑦ save EVERYTHING at once (one SaveChanges = one transaction)
-        _db.Orders.Add(order);
+        // ⑥ save ALL orders at once: one SaveChanges = one transaction (all or nothing)
         try
         {
             await _db.SaveChangesAsync();
         }
-            catch (DbUpdateConcurrencyException)
+        catch (DbUpdateConcurrencyException)
         {
             throw new ConflictException("The stock of a product changed while you were ordering. Please try again.");
-         }
+        }
+
+        // ⑦ tell each shop about ITS order (status: nothing → Pending)
+        foreach (var order in orders)
+        {
+            await _eventPublisher.PublishAsync(new OrderStatusChangedEvent
+            {
+                OrderId = order.Id,
+                TenantId = order.TenantId,
+                UserId = order.UserId,
+                OldStatus = "None",
+                NewStatus = order.Status.ToString(),
+                Note = "Order placed",
+                ChangedAt = DateTime.UtcNow
+            });
+        }
 
         // ⑧ the receipt
-        return ToResponse(order);
+        return new CheckoutResponse
+        {
+            CheckoutId = checkoutId,
+            Orders = orders.Select(ToResponse).ToList(),
+            GrandTotal = orders.Sum(o => o.TotalAmount)
+        };
     }
     private static OrderStatusChangedEvent CreateStatusChangedEvent(Order order, OrderStatus oldStatus, string? note) => new()
     {
@@ -122,6 +150,9 @@ public class OrderService : IOrderService
         Status = order.Status.ToString(),
         TotalAmount = order.TotalAmount,
         CreatedAt = order.CreatedAt,
+        CheckoutId = order.CheckoutId,
+        ShopName = order.Tenant.Name,
+        ShopSlug = order.Tenant.Slug,
         // TODO 8: Items = order.OrderItems.Select(i => new OrderItemResponse { … ProductName = i.Product.Name … }).ToList(),
         Items = order.OrderItems.Select(i => new OrderItemResponse
         {
@@ -164,8 +195,9 @@ public class OrderService : IOrderService
     private IQueryable<Order> VisibleOrders()
     {
         IQueryable<Order> query = _db.Orders
-            .Include(o => o.OrderItems).ThenInclude(i => i.Product)
-            .Include(o => o.StatusHistory);
+        .Include(o => o.Tenant)                                   // ⬅️ NEW: for ShopName
+        .Include(o => o.OrderItems).ThenInclude(i => i.Product)
+        .Include(o => o.StatusHistory);
         //In OrderService.VisibleOrders(), don’t delete the customer check (o.UserId == userId). It now does the same as the filter. That’s on purpose: two layers of protection (defence in depth). If someone breaks the filter one day, the service still protects the data.
         // Customers only see their own orders (TenantAdmins see all of their tenant)
         if (_currentUser.IsInRole(Roles.Customer))

@@ -18,6 +18,10 @@ namespace FulfillmentPlatform.Domain.Entities
         public decimal TotalAmount { get; set; }
         public List<OrderItem> OrderItems { get; set; } = new();
         public List<OrderStatusHistory> StatusHistory { get; set; } = new();
+        public Guid CheckoutId { get; set; }                 // orders bought together share this id
+        public string? ShippingStreet { get; set; }          // nullable: old orders have no address
+        public string? ShippingPostalCode { get; set; }
+        public string? ShippingCity { get; set; }
     }
 
 }
