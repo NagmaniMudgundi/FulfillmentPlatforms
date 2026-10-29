@@ -2,6 +2,7 @@ using FulfillmentPlatform.Api.ExceptionHandling;
 using FulfillmentPlatform.Api.Hubs;
 using FulfillmentPlatform.Api.Services;
 using FulfillmentPlatform.Application.Auth;
+using FulfillmentPlatform.Application.Catalog;
 using FulfillmentPlatform.Application.Common;
 using FulfillmentPlatform.Application.Common.Email;
 using FulfillmentPlatform.Application.Common.Messaging;
@@ -141,6 +142,8 @@ builder.Services.AddHostedService<OrderStatusChangedConsumer>();
 builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
 builder.Services.AddSingleton<IRealtimeNotifier, SignalRRealtimeNotifier>();
 builder.Services.AddSignalR();
+builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<ICatalogService, CatalogService>();
 var app = builder.Build();
 
 app.UseHangfireDashboard("/hangfire");

@@ -6,6 +6,7 @@ namespace FulfillmentPlatform.IntegrationTests.Infrastructure;
 // only used to create the test database: no request, no user, no shop
 public class NoUserCurrentUserService : ICurrentUserService
 {
+    public string? UserIdOrNull => null;
     public string UserId => string.Empty;
     public int? TenantId => null;                       // was: int TenantId => 0
     public int RequireTenantId() =>

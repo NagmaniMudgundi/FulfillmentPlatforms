@@ -9,7 +9,7 @@ namespace FulfillmentPlatform.Api.Controllers
 {
     [Route("api/products")]
     [ApiController]
-    [Authorize]
+    [Authorize(Roles = Roles.TenantAdmin)]
     public class ProductsController : ControllerBase
     {
         //private readonly AppDbContext _db;
@@ -34,7 +34,7 @@ namespace FulfillmentPlatform.Api.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ProductResponse>>> GetAllProducts()
         {
-            var result = await _productService.GetAllByTenantIdAsync();
+            var result = await _productService.GetAllAsync();
             return Ok(result);
         }
     }

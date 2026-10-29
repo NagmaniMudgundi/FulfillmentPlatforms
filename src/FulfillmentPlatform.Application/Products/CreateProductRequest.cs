@@ -18,5 +18,15 @@ namespace FulfillmentPlatform.Application.Products
         public decimal Price { get; init; }
         [Range(0, int.MaxValue, ErrorMessage = "Stock quantity cannot be negative.")]   
         public int StockQuantity { get; init; }
+        [Range(1, int.MaxValue, ErrorMessage = "Please choose a category.")]
+        public int CategoryId { get; init; }
+
+        [MaxLength(1000)]
+        public string? Description { get; init; }
+
+        [MaxLength(500), Url]
+        public string? ImageUrl { get; init; }
+
+        public bool IsActive { get; init; } = true;
     }
 }

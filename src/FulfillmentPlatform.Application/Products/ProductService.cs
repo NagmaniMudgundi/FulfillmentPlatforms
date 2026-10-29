@@ -1,67 +1,77 @@
 ﻿using FulfillmentPlatform.Application.Common;
-using FulfillmentPlatform.Domain.Entities;
 using FulfillmentPlatform.Application.Common.Exceptions;
+using FulfillmentPlatform.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace FulfillmentPlatform.Application.Products
 {
-    public class ProductService: IProductService
+    public class ProductService : IProductService
     {
         private readonly IAppDbContext _db;
         private readonly ICurrentUserService _currentUser;
+
         public ProductService(IAppDbContext db, ICurrentUserService currentUser)
         {
             _db = db;
             _currentUser = currentUser;
         }
+
         public async Task<ProductResponse> CreateAsync(CreateProductRequest request)
         {
+            // only shop admins create products: the product belongs to THEIR shop
             var tenantId = _currentUser.RequireTenantId();
 
-            // Check 2: is the SKU already used by this tenant?
-            var SkuExists = await _db.Products.AnyAsync(s => s.Sku == request.Sku );
+            // validation: does the category exist?
+            if (!await _db.Categories.AnyAsync(c => c.Id == request.CategoryId))
             {
-                if (SkuExists)
-                {
-                    throw new ConflictException($"The SKU '{request.Sku}' is already used by this tenant.");
-                }
+                throw new BadRequestException($"Category {request.CategoryId} does not exist.");
             }
+
+            // conflict: is the SKU already used in this shop? (the query filter limits this to the admin's shop)
+            var skuExists = await _db.Products.AnyAsync(p => p.Sku == request.Sku);
+            if (skuExists)
+            {
+                throw new ConflictException($"The SKU '{request.Sku}' is already used in your shop.");
+            }
+
             var product = new Product
             {
-                Name = request.Name,
                 TenantId = tenantId,
+                Name = request.Name,
                 Sku = request.Sku,
                 Price = request.Price,
-                StockQuantity = request.StockQuantity
+                StockQuantity = request.StockQuantity,
+                CategoryId = request.CategoryId,
+                Description = request.Description,
+                ImageUrl = request.ImageUrl,
+                IsActive = request.IsActive
             };
+
             _db.Products.Add(product);
             await _db.SaveChangesAsync();
             return ToResponse(product);
         }
-        public async Task<ProductResponse> GetByIdAsync( int id)
+
+        public async Task<ProductResponse> GetByIdAsync(int id)
         {
-        
-            //FindAsync(5) finds product 5 of any tenant. If product 5 belongs to TechShop and someone calls /api/tenants/1/products/5, ModeHaus would see TechShop’s product. ❌ So we search by both id and tenantId.
-            // var product = await _db.Products.FindAsync(id);
-            var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == id );
-            if (product == null)
+            // the query filter makes sure an admin only finds products of their own shop
+            var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == id);
+            if (product is null)
             {
                 throw new NotFoundException($"Product {id} not found.");
             }
             return ToResponse(product);
         }
-        public async Task<IEnumerable<ProductResponse>> GetAllByTenantIdAsync()
+
+        public async Task<IEnumerable<ProductResponse>> GetAllAsync()
         {
-           
-            return await _db.Products
-                .Select(p => ToResponse(p))
+            var products = await _db.Products
+                .OrderBy(p => p.Name)
                 .ToListAsync();
+
+            return products.Select(ToResponse);
         }
+
         private static ProductResponse ToResponse(Product product) => new ProductResponse
         {
             Id = product.Id,
@@ -69,7 +79,11 @@ namespace FulfillmentPlatform.Application.Products
             Name = product.Name,
             Sku = product.Sku,
             Price = product.Price,
-            StockQuantity = product.StockQuantity
+            StockQuantity = product.StockQuantity,
+            CategoryId = product.CategoryId,
+            Description = product.Description,
+            ImageUrl = product.ImageUrl,
+            IsActive = product.IsActive
         };
     }
 }

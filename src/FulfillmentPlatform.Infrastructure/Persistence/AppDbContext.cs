@@ -21,13 +21,12 @@ namespace FulfillmentPlatform.Infrastructure.Persistence
             _currentUser = currentUser;
         }
         private int? CurrentTenantId => _currentUser.TenantId;
+        private string? CurrentUserId => _currentUser.UserIdOrNull;
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
             // Global query filters: every query is automatically limited to the current tenant
-            modelBuilder.Entity<Product>().HasQueryFilter(p => p.TenantId == CurrentTenantId);
-            // TODO: the same for Order
-            modelBuilder.Entity<Order>().HasQueryFilter(p => p.TenantId == CurrentTenantId);
+          
             // Configure relationships and constraints here if needed
             modelBuilder.Entity<Tenant>().Property(t => t.Name).HasMaxLength(200);
 
@@ -46,11 +45,52 @@ namespace FulfillmentPlatform.Infrastructure.Persistence
             modelBuilder.Entity<ApplicationUser>().Property(u => u.FirstName).HasMaxLength(100);
             modelBuilder.Entity<ApplicationUser>().Property(u => u.LastName).HasMaxLength(100);
 
+            // CATEGORIES: platform-wide, fixed list
+            modelBuilder.Entity<Category>().Property(c => c.Name).IsRequired().HasMaxLength(100);
+            modelBuilder.Entity<Category>().Property(c => c.Slug).IsRequired().HasMaxLength(50);
+            modelBuilder.Entity<Category>().HasIndex(c => c.Slug).IsUnique();
+
+            // the fixed categories, created automatically with the database
+            modelBuilder.Entity<Category>().HasData(
+                new Category { Id = 1, Name = "Fashion", Slug = "fashion" },
+                new Category { Id = 2, Name = "Shoes", Slug = "shoes" },
+                new Category { Id = 3, Name = "Beauty", Slug = "beauty" },
+                new Category { Id = 4, Name = "Electronics", Slug = "electronics" },
+                new Category { Id = 5, Name = "Home", Slug = "home" },
+                new Category { Id = 6, Name = "Other", Slug = "other" });
+
+            // PRODUCT details
+            modelBuilder.Entity<Product>().Property(p => p.Description).HasMaxLength(1000);
+            modelBuilder.Entity<Product>().Property(p => p.ImageUrl).HasMaxLength(500);
+
+            // each product belongs to one category; a category with products can't be deleted
+            modelBuilder.Entity<Product>()
+                .HasOne(p => p.Category)
+                .WithMany(c => c.Products)
+                .HasForeignKey(p => p.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             modelBuilder.Entity<Order>().Property(o => o.TotalAmount).HasColumnType("decimal(18,2)");
 
             modelBuilder.Entity<OrderItem>().Property(oi => oi.UnitPrice).HasColumnType("decimal(18,2)");
-            modelBuilder.Entity<OrderItem>().HasQueryFilter(i => i.Order.TenantId == CurrentTenantId);
-            modelBuilder.Entity<OrderStatusHistory>().HasQueryFilter(h => h.Order.TenantId == CurrentTenantId);
+            // PRODUCTS: shop staff see only their shop; customers and visitors see all shops
+            modelBuilder.Entity<Product>().HasQueryFilter(p =>
+                CurrentTenantId == null || p.TenantId == CurrentTenantId);
+
+            // ORDERS: shop staff see their shop's orders; customers see only their OWN orders; visitors see none
+            modelBuilder.Entity<Order>().HasQueryFilter(o =>
+                (CurrentTenantId != null && o.TenantId == CurrentTenantId) ||
+                (CurrentTenantId == null && o.UserId == CurrentUserId));
+
+            // ORDER ITEMS + HISTORY: follow the same rule as their order
+            modelBuilder.Entity<OrderItem>().HasQueryFilter(i =>
+                (CurrentTenantId != null && i.Order.TenantId == CurrentTenantId) ||
+                (CurrentTenantId == null && i.Order.UserId == CurrentUserId));
+
+            modelBuilder.Entity<OrderStatusHistory>().HasQueryFilter(h =>
+                (CurrentTenantId != null && h.Order.TenantId == CurrentTenantId) ||
+                (CurrentTenantId == null && h.Order.UserId == CurrentUserId));
+
             modelBuilder.Entity<OrderItem>()         // ① "I'm configuring the OrderItem table"
             .HasOne(oi => oi.Product)               // ② "each OrderItem has ONE Product"
             .WithMany(p => p.OrderItems)            // ③ "each Product has MANY OrderItems"
@@ -87,6 +127,7 @@ namespace FulfillmentPlatform.Infrastructure.Persistence
         public DbSet<Order> Orders { get; set; } = null!;
         public DbSet<OrderItem> OrderItems { get; set; } = null!;
         public DbSet<OrderStatusHistory> OrderStatusHistories { get; set; } = null!;
+        public DbSet<Category> Categories { get; set; } = null!;
     }
 
 }

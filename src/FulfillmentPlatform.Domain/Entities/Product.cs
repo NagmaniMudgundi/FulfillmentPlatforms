@@ -18,6 +18,11 @@ namespace FulfillmentPlatform.Domain.Entities
         public int StockQuantity { get; set; }
         public List<OrderItem> OrderItems { get; set; } = new();
         public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+        public int CategoryId { get; set; }
+        public Category Category { get; set; } = null!;
+        public string? Description { get; set; }
+        public string? ImageUrl { get; set; }
+        public bool IsActive { get; set; } = true;    // false = hidden from the shop window
 
     }
 }

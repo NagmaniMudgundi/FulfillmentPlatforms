@@ -166,7 +166,7 @@ public class OrderService : IOrderService
         IQueryable<Order> query = _db.Orders
             .Include(o => o.OrderItems).ThenInclude(i => i.Product)
             .Include(o => o.StatusHistory);
-
+        //In OrderService.VisibleOrders(), don’t delete the customer check (o.UserId == userId). It now does the same as the filter. That’s on purpose: two layers of protection (defence in depth). If someone breaks the filter one day, the service still protects the data.
         // Customers only see their own orders (TenantAdmins see all of their tenant)
         if (_currentUser.IsInRole(Roles.Customer))
         {

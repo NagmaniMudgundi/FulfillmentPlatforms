@@ -16,5 +16,6 @@ namespace FulfillmentPlatform.Application.Common
         DbSet<OrderItem> OrderItems { get; }
         DbSet<OrderStatusHistory> OrderStatusHistories { get; }
         Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+        DbSet<Category> Categories { get; }
     }
 }

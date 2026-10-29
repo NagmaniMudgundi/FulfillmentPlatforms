@@ -22,6 +22,70 @@ namespace FulfillmentPlatform.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("FulfillmentPlatform.Domain.Entities.Category", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("Categories");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Fashion",
+                            Slug = "fashion"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "Shoes",
+                            Slug = "shoes"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Name = "Beauty",
+                            Slug = "beauty"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "Electronics",
+                            Slug = "electronics"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Name = "Home",
+                            Slug = "home"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Name = "Other",
+                            Slug = "other"
+                        });
+                });
+
             modelBuilder.Entity("FulfillmentPlatform.Domain.Entities.Order", b =>
                 {
                     b.Property<int>("Id")
@@ -121,6 +185,20 @@ namespace FulfillmentPlatform.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -147,6 +225,8 @@ namespace FulfillmentPlatform.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
 
                     b.HasIndex("TenantId", "Sku")
                         .IsUnique();
@@ -457,11 +537,19 @@ namespace FulfillmentPlatform.Infrastructure.Migrations
 
             modelBuilder.Entity("FulfillmentPlatform.Domain.Entities.Product", b =>
                 {
+                    b.HasOne("FulfillmentPlatform.Domain.Entities.Category", "Category")
+                        .WithMany("Products")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("FulfillmentPlatform.Domain.Entities.Tenant", "Tenant")
                         .WithMany("Products")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Category");
 
                     b.Navigation("Tenant");
                 });
@@ -525,6 +613,11 @@ namespace FulfillmentPlatform.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("FulfillmentPlatform.Domain.Entities.Category", b =>
+                {
+                    b.Navigation("Products");
                 });
 
             modelBuilder.Entity("FulfillmentPlatform.Domain.Entities.Order", b =>

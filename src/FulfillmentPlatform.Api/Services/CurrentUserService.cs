@@ -13,7 +13,7 @@ public class CurrentUserService : ICurrentUserService
     {
         _httpContextAccessor = httpContextAccessor;
     }
-
+    public string? UserIdOrNull => User?.FindFirstValue(ClaimTypes.NameIdentifier);
     // the logged-in user of the CURRENT request (or null if there is no request)
     private ClaimsPrincipal? User => _httpContextAccessor.HttpContext?.User;
 
