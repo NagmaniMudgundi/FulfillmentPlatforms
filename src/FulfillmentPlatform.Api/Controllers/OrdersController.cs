@@ -32,10 +32,10 @@ namespace FulfillmentPlatform.Api.Controllers
             var orderResponse = await _orderService.GetByIdAsync(id);
             return Ok(orderResponse);
         }
-        [HttpGet]
-        public async Task<ActionResult<List<OrderResponse>>> GetAllOrders()
+        [HttpGet]                                              // GET /api/orders?status=Pending&page=1
+        public async Task<ActionResult<PagedResult<OrderResponse>>> GetAll([FromQuery] OrderQuery query)
         {
-            var orders = await _orderService.GetAllAsync();
+            var orders = await _orderService.GetAllAsync(query);
             return Ok(orders);
         }
         [HttpPatch("{id:int}/status")]

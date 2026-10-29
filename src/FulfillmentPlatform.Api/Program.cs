@@ -7,6 +7,7 @@ using FulfillmentPlatform.Application.Common;
 using FulfillmentPlatform.Application.Common.Email;
 using FulfillmentPlatform.Application.Common.Messaging;
 using FulfillmentPlatform.Application.Common.Realtime;
+using FulfillmentPlatform.Application.Dashboard;
 using FulfillmentPlatform.Application.Orders;
 using FulfillmentPlatform.Application.Products;
 using FulfillmentPlatform.Application.Tenants;
@@ -14,6 +15,7 @@ using FulfillmentPlatform.Infrastructure.Email;
 using FulfillmentPlatform.Infrastructure.Identity;
 using FulfillmentPlatform.Infrastructure.Messaging;
 using FulfillmentPlatform.Infrastructure.Persistence;
+using FulfillmentPlatform.Infrastructure.Seeding;
 using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -62,7 +64,11 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
-builder.Services.AddDbContext<AppDbContext>(options=>options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        sql => sql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+//builder.Services.AddDbContext<AppDbContext>(options=>options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<IAppDbContext>(provider => provider.GetRequiredService<AppDbContext>());
 builder.Services.AddScoped<ITenantService, TenantService>();
 builder.Services.AddScoped<IProductService, ProductService>();
@@ -90,6 +96,8 @@ builder.Services
     .AddEntityFrameworkStores<AppDbContext>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<JwtTokenGenerator>();
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Jwt:Key is missing. Set it with: right-click Api → Manage User Secrets.");
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -103,8 +111,7 @@ builder.Services
             ValidAudience = builder.Configuration["Jwt:Audience"],
 
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
 
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
@@ -142,8 +149,9 @@ builder.Services.AddHostedService<OrderStatusChangedConsumer>();
 builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
 builder.Services.AddSingleton<IRealtimeNotifier, SignalRRealtimeNotifier>();
 builder.Services.AddSignalR();
-builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
+
+builder.Services.AddScoped<IDashboardService, DashboardService>();
 var app = builder.Build();
 
 app.UseHangfireDashboard("/hangfire");
@@ -156,8 +164,14 @@ recurringJobs.AddOrUpdate<IOrderService>(
     Cron.Hourly);                                            // every hour
 using (var scope = app.Services.CreateScope())
 {
-    await RoleSeeder.SeedAsync(scope.ServiceProvider);
+    await RoleSeeder.SeedAsync(scope.ServiceProvider);           // roles first: the seeder needs them
+
+    if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Seed:DemoData"))
+    {
+        await DevDataSeeder.SeedAsync(scope.ServiceProvider);
+    }
 }
+
 app.UseExceptionHandler();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

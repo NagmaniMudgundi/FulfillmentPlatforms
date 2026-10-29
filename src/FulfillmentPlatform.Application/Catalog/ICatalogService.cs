@@ -1,4 +1,6 @@
-﻿namespace FulfillmentPlatform.Application.Catalog;
+﻿using FulfillmentPlatform.Application.Common;
+
+namespace FulfillmentPlatform.Application.Catalog;
 
 public interface ICatalogService
 {

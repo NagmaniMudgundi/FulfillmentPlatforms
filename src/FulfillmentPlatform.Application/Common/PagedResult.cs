@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace FulfillmentPlatform.Application.Catalog;
+namespace FulfillmentPlatform.Application.Common;
 
 // one "page" of results, plus the info React needs for the page buttons
 public record PagedResult<T>
