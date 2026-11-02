@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { FileText, Minus, Plus, ShoppingCart, Truck } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatDeliveryDate, formatPrice } from "@/lib/format";
-import { categoryIcon } from "@/lib/categories";
+import { CategoryIcon } from "@/lib/categories";
 import { useCart } from "@/cart/CartContext";
 import type { CatalogProductResponse, PagedResult } from "@/types/api";
 import { ProductCard } from "@/components/ProductCard";
@@ -43,7 +43,6 @@ export function ProductPage() {
 
   const p = product.data;
   const color = p.shopBrandColor ?? "#4338CA";
-  const Icon = categoryIcon(p.categorySlug);
   const maxQuantity = p.onlyLeft ?? 100;
   const lang = i18n.language;
 
@@ -73,7 +72,7 @@ export function ProductPage() {
           {p.imageUrl ? (
             <img src={p.imageUrl} alt={p.name} className="h-full w-full rounded-3xl object-cover" />
           ) : (
-            <Icon className="h-32 w-32 md:h-48 md:w-48" strokeWidth={0.9} />
+            <CategoryIcon slug={p.categorySlug} className="h-32 w-32 md:h-48 md:w-48" strokeWidth={0.9} />
           )}
         </div>
 

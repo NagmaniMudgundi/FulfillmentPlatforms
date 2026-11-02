@@ -18,5 +18,15 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+        rules: {
+      // contexts export a hook next to their provider; shadcn exports its style helpers
+      'react-refresh/only-export-components': [
+        'error',
+        {
+          allowConstantExport: true,
+          allowExportNames: ['useAuth', 'useCart', 'useLiveState', 'buttonVariants', 'badgeVariants'],
+        },
+      ],
+    },
   },
 ])

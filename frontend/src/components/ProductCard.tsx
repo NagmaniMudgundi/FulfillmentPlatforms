@@ -1,13 +1,12 @@
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { formatPrice } from "@/lib/format";
-import { categoryIcon } from "@/lib/categories";
+import { CategoryIcon } from "@/lib/categories";
 import type { CatalogProductResponse } from "@/types/api";
 
 export function ProductCard({ product }: { product: CatalogProductResponse }) {
   const { t, i18n } = useTranslation();
   const color = product.shopBrandColor ?? "#4338CA";
-  const Icon = categoryIcon(product.categorySlug);
 
   return (
     <Link to={`/product/${product.id}`} className="group flex flex-col gap-3">
@@ -19,7 +18,7 @@ export function ProductCard({ product }: { product: CatalogProductResponse }) {
         {product.imageUrl ? (
           <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover transition group-hover:scale-105" />
         ) : (
-          <Icon className="h-16 w-16 transition group-hover:scale-110" strokeWidth={1.25} />
+          <CategoryIcon slug={product.categorySlug} className="h-16 w-16 transition group-hover:scale-110" strokeWidth={1.25} />
         )}
 
         {/* "sold by" chip */}

@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatPrice } from "@/lib/format";
-import { categoryIcon } from "@/lib/categories";
+import { CategoryIcon } from "@/lib/categories";
 import { useCart } from "@/cart/CartContext";
 import { useAuth } from "@/auth/AuthContext";
 import type { CheckoutResponse } from "@/types/api";
@@ -85,36 +85,33 @@ export function CartPage() {
                 </span>
               </div>
 
-              {group.items.map((item) => {
-                const Icon = categoryIcon(item.categorySlug);
-                return (
-                  <div key={item.productId} className="flex items-center gap-3 border-b border-border px-4 py-4 last:border-b-0 sm:gap-4 sm:px-5">
-                    <span className="hidden h-16 w-16 shrink-0 items-center justify-center rounded-xl sm:flex" style={{ background: `${color}1A`, color }}>
-                      <Icon className="h-7 w-7" strokeWidth={1.5} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <Link to={`/product/${item.productId}`} className="font-semibold hover:text-primary">{item.name}</Link>
-                      <p className="text-sm text-muted-foreground">{formatPrice(item.price, lang)}</p>
-                    </div>
-                    <div className="flex shrink-0 items-center rounded-lg border border-border">
-                      <button type="button" aria-label="−" className="flex h-9 w-8 items-center justify-center sm:w-9"
-                        onClick={() => setQuantity(item.productId, item.quantity - 1)}>
-                        <Minus className="h-3.5 w-3.5" />
-                      </button>
-                      <span className="w-6 text-center text-sm font-bold sm:w-7">{item.quantity}</span>
-                      <button type="button" aria-label="+" className="flex h-9 w-8 items-center justify-center sm:w-9"
-                        onClick={() => setQuantity(item.productId, item.quantity + 1)}>
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <span className="w-20 shrink-0 text-right font-bold sm:w-24">{formatPrice(item.price * item.quantity, lang)}</span>
-                    <button type="button" aria-label={t("cart.remove")} onClick={() => remove(item.productId)}
-                      className="shrink-0 text-muted-foreground hover:text-destructive">
-                      <Trash2 className="h-4 w-4" />
+              {group.items.map((item) => (
+                <div key={item.productId} className="flex items-center gap-3 border-b border-border px-4 py-4 last:border-b-0 sm:gap-4 sm:px-5">
+                  <span className="hidden h-16 w-16 shrink-0 items-center justify-center rounded-xl sm:flex" style={{ background: `${color}1A`, color }}>
+                    <CategoryIcon slug={item.categorySlug} className="h-7 w-7" strokeWidth={1.5} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <Link to={`/product/${item.productId}`} className="font-semibold hover:text-primary">{item.name}</Link>
+                    <p className="text-sm text-muted-foreground">{formatPrice(item.price, lang)}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center rounded-lg border border-border">
+                    <button type="button" aria-label="−" className="flex h-9 w-8 items-center justify-center sm:w-9"
+                      onClick={() => setQuantity(item.productId, item.quantity - 1)}>
+                      <Minus className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="w-6 text-center text-sm font-bold sm:w-7">{item.quantity}</span>
+                    <button type="button" aria-label="+" className="flex h-9 w-8 items-center justify-center sm:w-9"
+                      onClick={() => setQuantity(item.productId, item.quantity + 1)}>
+                      <Plus className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                );
-              })}
+                  <span className="w-20 shrink-0 text-right font-bold sm:w-24">{formatPrice(item.price * item.quantity, lang)}</span>
+                  <button type="button" aria-label={t("cart.remove")} onClick={() => remove(item.productId)}
+                    className="shrink-0 text-muted-foreground hover:text-destructive">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
 
               <div className="flex justify-between gap-3 px-4 py-3 text-sm text-muted-foreground sm:px-5">
                 <span>{t("cart.subtotal", { shop: group.shopName })}</span>

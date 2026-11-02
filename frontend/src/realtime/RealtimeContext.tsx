@@ -15,14 +15,11 @@ const HUB_URL = `${import.meta.env.VITE_API_URL}/hubs/orders`;
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const { user, isAdmin } = useAuth();
   const queryClient = useQueryClient();
-  const [state, setState] = useState<LiveState>("offline");
+  const [state, setState] = useState<LiveState>("connecting");
   const token = user?.token;
 
   useEffect(() => {
-    if (!token) {
-      setState("offline");
-      return;
-    }
+    if (!token) return;                                       // nobody logged in → no connection
 
     let active = true;                                        // ignore events after cleanup
 
@@ -48,11 +45,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       }
     });
 
+    // state changes only in callbacks (the lint rule: no setState directly in the effect body)
     connection.onreconnecting(() => active && setState("reconnecting"));
     connection.onreconnected(() => active && setState("live"));
     connection.onclose(() => active && setState("offline"));
 
-    setState("connecting");
     connection
       .start()
       .then(() => active && setState("live"))
@@ -65,7 +62,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     };
   }, [token, isAdmin, queryClient]);
 
-  return <RealtimeContext.Provider value={state}>{children}</RealtimeContext.Provider>;
+  // no token → always "offline" (calculated, not stored)
+  const value: LiveState = token ? state : "offline";
+
+  return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
 }
 
 // any component: const live = useLiveState();  → "live" | "offline" | …

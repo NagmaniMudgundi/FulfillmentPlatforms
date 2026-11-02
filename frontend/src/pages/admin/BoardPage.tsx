@@ -173,8 +173,9 @@ function DraggableCard({ order }: { order: OrderResponse }) {
 function OrderCard({ order, overlay = false }: { order: OrderResponse; overlay?: boolean }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
+  const [now] = useState(() => Date.now());          // read the clock ONCE (not on every render)
   const itemCount = order.items.reduce((sum, i) => sum + i.quantity, 0);
-  const autoCancelSoon = order.status === "Pending" && Date.now() - new Date(order.createdAt).getTime() > AUTO_CANCEL_WARNING_MS;
+  const autoCancelSoon = order.status === "Pending" && now - new Date(order.createdAt).getTime() > AUTO_CANCEL_WARNING_MS;
 
   return (
     <article
