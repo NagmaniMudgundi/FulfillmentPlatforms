@@ -2,6 +2,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FulfillmentPlatform.Application.Auth;
+using FulfillmentPlatform.Application.Common;
 using FulfillmentPlatform.Application.Orders;
 using FulfillmentPlatform.Application.Products;
 using FulfillmentPlatform.IntegrationTests.Infrastructure;
@@ -12,7 +13,7 @@ public class OrdersApiTests : IClassFixture<CustomWebApplicationFactory>
 {
     private const string Password = "Passwort1";
     private readonly CustomWebApplicationFactory _factory;
-    private readonly HttpClient _client;   // a client WITHOUT a token
+    private readonly HttpClient _client;   // a client WITHOUT a token (= visitor)
 
     public OrdersApiTests(CustomWebApplicationFactory factory)
     {
@@ -22,10 +23,11 @@ public class OrdersApiTests : IClassFixture<CustomWebApplicationFactory>
 
     // ───────────────────────── HELPERS ─────────────────────────
 
-    // a unique email for every call, so tests never clash
+    // unique values for every call, so tests never clash
     private static string UniqueEmail(string name) => $"{name}-{Guid.NewGuid():N}@test.de";
+    private static string UniqueSlug() => "shop-" + Guid.NewGuid().ToString("N")[..8];
 
-    // like "Authorize" in Swagger: a client that sends this token with every request
+    // like "Authorize" in Swagger
     private HttpClient ClientWithToken(string token)
     {
         var client = _factory.CreateClient();
@@ -33,60 +35,82 @@ public class OrdersApiTests : IClassFixture<CustomWebApplicationFactory>
         return client;
     }
 
-    // POST /api/auth/login → token
     private async Task<string> LoginAsync(string email)
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login", new { email, password = Password });
-        response.EnsureSuccessStatusCode();                               // fail the test if not 2xx
+        response.EnsureSuccessStatusCode();
         var login = await response.Content.ReadFromJsonAsync<LoginResponse>();
         return login!.Token;
     }
 
-    // POST /api/auth/register-company → (tenantId, logged-in admin client)
-    private async Task<(int TenantId, HttpClient Admin)> CreateShopWithAdminAsync()
+    // a new shop + its logged-in admin
+    private async Task<(int TenantId, string Slug, HttpClient Admin)> CreateShopWithAdminAsync()
     {
         var adminEmail = UniqueEmail("admin");
-        var response = await _client.PostAsJsonAsync("/api/auth/register-company",
-            new { companyName = "Shop " + Guid.NewGuid().ToString("N")[..6], adminEmail, adminPassword = Password });
+        var slug = UniqueSlug();
+        var response = await _client.PostAsJsonAsync("/api/auth/register-company", new
+        {
+            companyName = "Shop " + slug,
+            slug,
+            adminEmail,
+            adminPassword = Password,
+            adminFirstName = "Max",
+            adminLastName = "Admin"
+        });
         response.EnsureSuccessStatusCode();
         var company = await response.Content.ReadFromJsonAsync<RegisterCompanyResponse>();
 
         var token = await LoginAsync(adminEmail);
-        return (company!.TenantId, ClientWithToken(token));
+        return (company!.TenantId, slug, ClientWithToken(token));
     }
 
-    // POST /api/auth/register + login → a logged-in customer client
-    private async Task<HttpClient> CreateCustomerAsync(int tenantId, string name)
+    // a new logged-in customer (platform account, no shop)
+    private async Task<HttpClient> CreateCustomerAsync(string name)
     {
         var email = UniqueEmail(name);
-        var response = await _client.PostAsJsonAsync("/api/auth/register", new { email, password = Password, tenantId });
+        var response = await _client.PostAsJsonAsync("/api/auth/register",
+            new { email, password = Password, firstName = name, lastName = "Test" });
         response.EnsureSuccessStatusCode();
 
         var token = await LoginAsync(email);
         return ClientWithToken(token);
     }
 
-    // POST /api/products (as admin) → product id
-    private static async Task<int> CreateProductAsync(HttpClient admin)
+    // POST /api/products as admin → product id
+    private static async Task<int> CreateProductAsync(HttpClient admin, bool isActive = true)
     {
-        var response = await admin.PostAsJsonAsync("/api/products",
-            new { name = "TShirt", sku = "TS-" + Guid.NewGuid().ToString("N")[..8], price = 500, stockQuantity = 100 });
+        var response = await admin.PostAsJsonAsync("/api/products", new
+        {
+            name = "TShirt",
+            sku = "TS-" + Guid.NewGuid().ToString("N")[..8],
+            price = 500,
+            stockQuantity = 100,
+            categoryId = 1,
+            isActive
+        });
         response.EnsureSuccessStatusCode();
         var product = await response.Content.ReadFromJsonAsync<ProductResponse>();
         return product!.Id;
     }
 
-    // POST /api/orders (as customer) → order id
-    private static async Task<int> PlaceOrderAsync(HttpClient customer, int productId)
+    // the checkout body React will send
+    private static object CartBody(params (int ProductId, int Quantity)[] items) => new
     {
-        var response = await customer.PostAsJsonAsync("/api/orders",
-            new { items = new[] { new { productId, quantity = 1 } } });
+        items = items.Select(i => new { productId = i.ProductId, quantity = i.Quantity }).ToArray(),
+        street = "Lindachstraße 26",
+        postalCode = "72764",
+        city = "Reutlingen"
+    };
+
+    // POST /api/orders/checkout as customer → the receipt
+    private static async Task<CheckoutResponse> CheckoutAsync(HttpClient customer, params (int ProductId, int Quantity)[] items)
+    {
+        var response = await customer.PostAsJsonAsync("/api/orders/checkout", CartBody(items));
         response.EnsureSuccessStatusCode();
-        var order = await response.Content.ReadFromJsonAsync<OrderResponse>();
-        return order!.Id;
+        return (await response.Content.ReadFromJsonAsync<CheckoutResponse>())!;
     }
 
-    // ───────────────────────── TESTS ─────────────────────────
+    // ───────────────────────── SECURITY ─────────────────────────
 
     [Fact]
     public async Task GetOrders_WithoutToken_Returns401()
@@ -95,76 +119,165 @@ public class OrdersApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    // ── Test 1 (complete example) ──
     [Fact]
     public async Task ChangeStatus_AsCustomer_Returns403()
     {
-        // Arrange: a shop, a product, Anna, and Anna's order
-        var (tenantId, admin) = await CreateShopWithAdminAsync();
+        var (_, _, admin) = await CreateShopWithAdminAsync();
         var productId = await CreateProductAsync(admin);
-        var anna = await CreateCustomerAsync(tenantId, "anna");
-        var orderId = await PlaceOrderAsync(anna, productId);
+        var anna = await CreateCustomerAsync("anna");
+        var orderId = (await CheckoutAsync(anna, (productId, 1))).Orders.Single().Id;
 
-        // Act: Anna tries to change the status herself
         var response = await anna.PatchAsJsonAsync($"/api/orders/{orderId}/status", new { newStatus = "Processing" });
 
-        // Assert
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);   // 403
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    // TODO Test 2: GetOrderById_OtherCustomersOrder_Returns404
-    //   Arrange: one shop + product, TWO customers (anna, ben), Anna places an order
-    //   Act:     Ben calls GET /api/orders/{Anna's orderId}
-    //   Assert:  HttpStatusCode.NotFound
     [Fact]
     public async Task GetOrderById_OtherCustomersOrder_Returns404()
     {
-        // Arrange: one shop + product, TWO customers (anna, ben), Anna places an order
-        var (tenantId, admin) = await CreateShopWithAdminAsync();
+        var (_, _, admin) = await CreateShopWithAdminAsync();
         var productId = await CreateProductAsync(admin);
-        var anna = await CreateCustomerAsync(tenantId, "anna");
-        var ben = await CreateCustomerAsync(tenantId, "ben");
-        var orderId = await PlaceOrderAsync(anna, productId);
-        // Act: Ben calls GET /api/orders/{Anna's orderId}
+        var anna = await CreateCustomerAsync("anna");
+        var ben = await CreateCustomerAsync("ben");
+        var orderId = (await CheckoutAsync(anna, (productId, 1))).Orders.Single().Id;
+
         var response = await ben.GetAsync($"/api/orders/{orderId}");
-        // Assert: HttpStatusCode.NotFound
+
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    // TODO Test 3: GetOrderById_OtherTenantsOrder_Returns404
-    //   Arrange: TWO shops (each CreateShopWithAdminAsync), Anna in shop 1 places an order
-    //   Act:     the ADMIN of shop 2 calls GET /api/orders/{Anna's orderId}
-    //   Assert:  NotFound
     [Fact]
-    public async Task GetOrderById_OtherTenantsOrder_Returns404()
+    public async Task GetOrderById_OtherShopsOrder_Returns404()
     {
-        // Arrange: TWO shops (each CreateShopWithAdminAsync), Anna in shop 1 places an order
-        var (tenantId1, admin1) = await CreateShopWithAdminAsync();
-        var productId1 = await CreateProductAsync(admin1);
-        var anna = await CreateCustomerAsync(tenantId1, "anna");
-        var orderId = await PlaceOrderAsync(anna, productId1);
-        var (tenantId2, admin2) = await CreateShopWithAdminAsync();
-        // Act: the ADMIN of shop 2 calls GET /api/orders/{Anna's orderId}
+        // the most important test: shop 2 must never see shop 1's data
+        var (_, _, admin1) = await CreateShopWithAdminAsync();
+        var productId = await CreateProductAsync(admin1);
+        var anna = await CreateCustomerAsync("anna");
+        var orderId = (await CheckoutAsync(anna, (productId, 1))).Orders.Single().Id;
+        var (_, _, admin2) = await CreateShopWithAdminAsync();
+
         var response = await admin2.GetAsync($"/api/orders/{orderId}");
-        // Assert: NotFound
+
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    // TODO Test 4: PlaceOrder_AsCustomer_Returns201
-    //   Arrange: shop + product + customer
-    //   Act:     customer POST /api/orders (same body as in PlaceOrderAsync)
-    //   Assert:  HttpStatusCode.Created
     [Fact]
-    public async Task PlaceOrder_AsCustomer_Returns201()
+    public async Task ProductBackOffice_AsCustomer_Returns403()
     {
-        // Arrange: shop + product + customer
-        var (tenantId, admin) = await CreateShopWithAdminAsync();
+        var anna = await CreateCustomerAsync("anna");
+        var response = await anna.GetAsync("/api/products");
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Dashboard_AsCustomer_Returns403()
+    {
+        var anna = await CreateCustomerAsync("anna");
+        var response = await anna.GetAsync("/api/admin/dashboard");
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    // ───────────────────────── CHECKOUT ─────────────────────────
+
+    [Fact]
+    public async Task Checkout_AsCustomer_Returns200()
+    {
+        var (_, _, admin) = await CreateShopWithAdminAsync();
         var productId = await CreateProductAsync(admin);
-        var customer = await CreateCustomerAsync(tenantId, "customer");
-        // Act: customer POST /api/orders (same body as in PlaceOrderAsync)
-        var response = await customer.PostAsJsonAsync("/api/orders",
-            new { items = new[] { new { productId, quantity = 1 } } });
-        // Assert: HttpStatusCode.Created
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var customer = await CreateCustomerAsync("customer");
+
+        var response = await customer.PostAsJsonAsync("/api/orders/checkout", CartBody((productId, 1)));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Checkout_CartFromTwoShops_EachShopSeesOnlyItsOwnOrder()
+    {
+        var (_, _, admin1) = await CreateShopWithAdminAsync();
+        var (_, _, admin2) = await CreateShopWithAdminAsync();
+        var product1 = await CreateProductAsync(admin1);
+        var product2 = await CreateProductAsync(admin2);
+        var anna = await CreateCustomerAsync("anna");
+
+        var receipt = await CheckoutAsync(anna, (product1, 1), (product2, 2));
+
+        Assert.Equal(2, receipt.Orders.Count);                         // split per shop
+
+        var annasOrders = await anna.GetFromJsonAsync<PagedResult<OrderResponse>>("/api/orders");
+        Assert.Equal(2, annasOrders!.TotalCount);                      // Anna sees both
+
+        var shop1Orders = await admin1.GetFromJsonAsync<PagedResult<OrderResponse>>("/api/orders");
+        Assert.Equal(1, shop1Orders!.TotalCount);                      // each shop sees only its own
+    }
+
+    [Fact]
+    public async Task Checkout_AsAdmin_Returns403()
+    {
+        var (_, _, admin) = await CreateShopWithAdminAsync();
+        var productId = await CreateProductAsync(admin);
+
+        var response = await admin.PostAsJsonAsync("/api/orders/checkout", CartBody((productId, 1)));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Checkout_QuantityZero_Returns400()
+    {
+        var (_, _, admin) = await CreateShopWithAdminAsync();
+        var productId = await CreateProductAsync(admin);
+        var anna = await CreateCustomerAsync("anna");
+
+        var response = await anna.PostAsJsonAsync("/api/orders/checkout", CartBody((productId, 0)));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // ───────────────────────── CATALOG + SHOPS ─────────────────────────
+
+    [Fact]
+    public async Task Catalog_AsVisitor_ShowsShopProductsWithoutInternalData()
+    {
+        var (_, slug, admin) = await CreateShopWithAdminAsync();
+        await CreateProductAsync(admin);
+
+        var response = await _client.GetAsync($"/api/catalog/products?shop={slug}");
+        var json = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"totalCount\":1", json);
+        Assert.DoesNotContain("sku", json, StringComparison.OrdinalIgnoreCase);         // internal data stays internal
+        Assert.DoesNotContain("tenantId", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("stockQuantity", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Catalog_InactiveProduct_Returns404()
+    {
+        var (_, _, admin) = await CreateShopWithAdminAsync();
+        var hiddenId = await CreateProductAsync(admin, isActive: false);
+
+        var response = await _client.GetAsync($"/api/catalog/products/{hiddenId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RegisterCompany_DuplicateSlug_Returns409()
+    {
+        var (_, slug, _) = await CreateShopWithAdminAsync();
+
+        var response = await _client.PostAsJsonAsync("/api/auth/register-company", new
+        {
+            companyName = "Copy Shop",
+            slug,                                                       // already taken
+            adminEmail = UniqueEmail("copy"),
+            adminPassword = Password,
+            adminFirstName = "Copy",
+            adminLastName = "Cat"
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 }

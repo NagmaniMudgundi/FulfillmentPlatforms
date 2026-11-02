@@ -37,5 +37,9 @@ namespace FulfillmentPlatform.Api.Controllers
             var result = await _productService.GetAllAsync();
             return Ok(result);
         }
+
+        [HttpPut("{id:int}")]                                      // PUT /api/products/12
+        public async Task<ActionResult<ProductResponse>> Update(int id, UpdateProductRequest request)
+    => Ok(await _productService.UpdateAsync(id, request));
     }
 }

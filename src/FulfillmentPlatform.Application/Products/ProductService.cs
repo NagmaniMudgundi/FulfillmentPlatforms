@@ -71,7 +71,42 @@ namespace FulfillmentPlatform.Application.Products
 
             return products.Select(ToResponse);
         }
+        public async Task<ProductResponse> UpdateAsync(int id, UpdateProductRequest request)
+        {
+            _currentUser.RequireTenantId();                           // shop admins only
 
+            // the query filter → an admin only finds products of their OWN shop (otherwise 404)
+            var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == id);
+            if (product is null)
+            {
+                throw new NotFoundException($"Product {id} not found.");
+            }
+
+            if (!await _db.Categories.AnyAsync(c => c.Id == request.CategoryId))
+            {
+                throw new BadRequestException($"Category {request.CategoryId} does not exist.");
+            }
+
+            product.Name = request.Name;
+            product.Price = request.Price;
+            product.StockQuantity = request.StockQuantity;
+            product.CategoryId = request.CategoryId;
+            product.Description = request.Description;
+            product.ImageUrl = request.ImageUrl;
+            product.IsActive = request.IsActive;
+
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // RowVersion: a customer bought this product while the admin was editing
+                throw new ConflictException("This product was changed in the meantime (e.g. sold). Please reload and try again.");
+            }
+
+            return ToResponse(product);
+        }
         private static ProductResponse ToResponse(Product product) => new ProductResponse
         {
             Id = product.Id,

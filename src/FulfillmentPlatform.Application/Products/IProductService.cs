@@ -11,5 +11,6 @@ namespace FulfillmentPlatform.Application.Products
         Task<ProductResponse> CreateAsync(CreateProductRequest request);
         Task<ProductResponse> GetByIdAsync(int id);
         Task<IEnumerable<ProductResponse>> GetAllAsync();
+        Task<ProductResponse> UpdateAsync(int id, UpdateProductRequest request);
     }
 }

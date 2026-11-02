@@ -35,7 +35,8 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
         // use the test database instead of your dev database
         builder.UseSetting("ConnectionStrings:DefaultConnection", TestConnectionString);
-
+        // tests run as "Testing", where User Secrets are NOT loaded → give the API a test-only JWT key
+        builder.UseSetting("Jwt:Key", "integration-tests-only-key-0123456789-abcdefghijklmnopqrstuvwxyz");
         builder.ConfigureTestServices(services =>
         {
             // no RabbitMQ in tests: remove the consumer…

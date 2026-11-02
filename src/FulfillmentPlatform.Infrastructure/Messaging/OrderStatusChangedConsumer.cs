@@ -1,7 +1,9 @@
-﻿using System.Text.Json;
+﻿using FulfillmentPlatform.Application.Common.Email;
+using FulfillmentPlatform.Application.Common.Realtime;
 using FulfillmentPlatform.Application.Orders.Events;
 using FulfillmentPlatform.Infrastructure.Identity;
-using FulfillmentPlatform.Application.Common.Email;
+using FulfillmentPlatform.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,7 +11,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using FulfillmentPlatform.Application.Common.Realtime;
+using System.Text.Json;
 
 namespace FulfillmentPlatform.Infrastructure.Messaging;
 
@@ -79,39 +81,67 @@ public class OrderStatusChangedConsumer : BackgroundService
 
     // Handles ONE message: "send" the notification
     // Handles ONE message: send the notification email
+    // Handles ONE message: live update + email to the customer
     private async Task HandleAsync(OrderStatusChangedEvent orderEvent)
     {
+        // ① live update in the browser (customer + shop admins)
         await _realtimeNotifier.NotifyOrderStatusChangedAsync(orderEvent);
-        // find the customer's email (UserManager is Scoped → create a scope)
+
+        // UserManager and AppDbContext are Scoped → create a scope
         using var scope = _scopeFactory.CreateScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        var user = await userManager.FindByIdAsync(orderEvent.UserId);
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        // nobody to write to? then there's nothing to do
+        // ② who gets the email?
+        var user = await userManager.FindByIdAsync(orderEvent.UserId);
         if (user?.Email is null)
         {
             _logger.LogWarning("No email found for user {UserId}, order {OrderId}.", orderEvent.UserId, orderEvent.OrderId);
             return;
         }
 
-        // write the email
-        var subject = $"Your order #{orderEvent.OrderId} is now {orderEvent.NewStatus}";
+        // ③ which shop? (the event only carries the TenantId)
+        var shopName = await db.Tenants
+            .Where(t => t.Id == orderEvent.TenantId)
+            .Select(t => t.Name)
+            .FirstOrDefaultAsync() ?? "our shop";
 
-        var body =
-            $"Hello,\n\n" +
-            $"the status of your order #{orderEvent.OrderId} has changed " +
-            $"from {orderEvent.OldStatus} to {orderEvent.NewStatus}.\n";
+        var greeting = string.IsNullOrWhiteSpace(user.FirstName) ? "Hello," : $"Hello {user.FirstName},";
 
-        if (!string.IsNullOrWhiteSpace(orderEvent.Note))
+        // ④ new order or status update?
+        var isNewOrder = orderEvent.OldStatus == "None";
+
+        string subject;
+        string body;
+
+        if (isNewOrder)
         {
-            body += $"\nNote: {orderEvent.Note}\n";
+            subject = $"Order confirmation #{orderEvent.OrderId} from {shopName}";
+            body =
+                $"{greeting}\n\n" +
+                $"thank you for your order #{orderEvent.OrderId} at {shopName}!\n" +
+                $"We have received it and will start processing it soon.\n\n" +
+                $"You can follow every step live under \"My orders\".\n";
+        }
+        else
+        {
+            subject = $"Your order #{orderEvent.OrderId} from {shopName} is now {orderEvent.NewStatus}";
+            body =
+                $"{greeting}\n\n" +
+                $"the status of your order #{orderEvent.OrderId} at {shopName} " +
+                $"has changed from {orderEvent.OldStatus} to {orderEvent.NewStatus}.\n";
+
+            if (!string.IsNullOrWhiteSpace(orderEvent.Note))
+            {
+                body += $"\nNote: {orderEvent.Note}\n";
+            }
         }
 
-        body += "\nThank you for your order!";
+        body += $"\nBest regards,\nYour {shopName} team";
 
-        // send it (real SMTP → Mailpit)
+        // ⑤ send it (SMTP → Mailpit)
         await _emailSender.SendAsync(user.Email, subject, body);
 
-        _logger.LogInformation("Email sent to {Email} for order {OrderId}.", user.Email, orderEvent.OrderId);
+        _logger.LogInformation("Email '{Subject}' sent to {Email}.", subject, user.Email);
     }
 }

@@ -152,6 +152,17 @@ builder.Services.AddSignalR();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
 
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+
+// CORS: allow the React dev server to call this API (and SignalR with credentials)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy => policy
+        .WithOrigins("http://localhost:5173")
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials());
+});
+
 var app = builder.Build();
 
 app.UseHangfireDashboard("/hangfire");
@@ -183,7 +194,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+app.UseCors("Frontend");
 app.UseAuthentication();
+
 app.UseAuthorization();
 
 app.MapControllers();
