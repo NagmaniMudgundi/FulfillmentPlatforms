@@ -364,3 +364,8 @@ FodyWeavers.xsd
 
 # Serilog log files
 logs/
+
+# Frontend build + local env files
+frontend/dist/
+.env.local
+.env.*.local
